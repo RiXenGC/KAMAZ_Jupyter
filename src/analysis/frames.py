@@ -3,7 +3,7 @@ import numpy as np
 from src.simulation.run_simulation import run_simulation
 from src.simulation.data_loader import load_data
 from src.simulation.vibration import add_engine_vibration
-from src.config.constants import A_WGS84
+from src.config.constants import A_WGS84, INIT_LAT, INIT_LON, INIT_ALT
 from src.config.config import IMU_ERR, GPS_ERR
 
 
@@ -35,13 +35,7 @@ def lla_to_ned(lat, lon, h, lat0, lon0, h0):
 
 def prepare_scenario(
     scenario, motion_dir, data_dir, vibration_mode="harmonics_plus_noise", run_sim=True
-):
-    """
-    Полная подготовка одного сценария: прогон симулятора (опц.),
-    загрузка, перевод в NED, шумы, вибрация.
-
-    Возвращает dict со всем, что нужно фильтрам.
-    """
+) -> dict:
 
     motion_csv = f"{motion_dir}/{scenario}.csv"
     out_dir = f"{data_dir}/{scenario}"
@@ -50,17 +44,17 @@ def prepare_scenario(
         run_simulation(motion_csv, out_dir)
     data = load_data(out_dir)
 
-    # --- IMU ---
+    # Init point
+    lat0 = np.deg2rad(INIT_LAT)
+    lon0 = np.deg2rad(INIT_LON)
+    h0 = np.deg2rad(INIT_ALT)
+
+    # IMU
     accel = np.asarray(data["accel"])
     gyro = np.asarray(data["gyro"])
     imu_time = np.asarray(data["imu_time"])
 
-    # --- точка старта ---
-    lat0 = np.deg2rad(data["ref_pos"][0, 0])
-    lon0 = np.deg2rad(data["ref_pos"][0, 1])
-    h0 = data["ref_pos"][0, 2]
-
-    # --- reference в NED ---
+    # Reference
     lat = np.deg2rad(data["ref_pos"][:, 0])
     lon = np.deg2rad(data["ref_pos"][:, 1])
     h = data["ref_pos"][:, 2]
@@ -68,7 +62,7 @@ def prepare_scenario(
     ref_vel_ned = np.asarray(data["ref_vel"])
     ref_euler_ned = np.deg2rad(np.asarray(data["ref_att"]))
 
-    # --- GPS в NED ---
+    # GPS
     gps_lla = np.asarray(data["gps"][:, 0:3]).copy()
     gps_lla[:, 0:2] = np.deg2rad(gps_lla[:, 0:2])
     gps_pos_ned = lla_to_ned(
@@ -77,10 +71,10 @@ def prepare_scenario(
     gps_vel_ned = np.asarray(data["gps"][:, 3:6])
     gps_idx = np.searchsorted(imu_time, data["gps_time"])
 
-    # --- начальный кватернион ---
+    # init quaternio
     q0 = euler_to_quat_zyx(*ref_euler_ned[0])
 
-    # --- шумы ---
+    # Noise
     noise = dict(
         sigma_a_n=IMU_ERR["accel_vrw"] / 60.0,
         sigma_g_n=np.deg2rad(IMU_ERR["gyro_arw"]) / 60.0,
@@ -90,7 +84,7 @@ def prepare_scenario(
         sigma_gps_vel=GPS_ERR["stdv"],
     )
 
-    # --- вибрация ---
+    # Vibration
     accel_vib, gyro_vib = add_engine_vibration(accel, gyro, fs=400, mode=vibration_mode)
 
     return {
@@ -106,6 +100,6 @@ def prepare_scenario(
         "gps_vel_ned": gps_vel_ned,
         "gps_idx": gps_idx,
         "q0": q0,
-        "lat0_deg": data["ref_pos"][0, 0],
+        "lat0_deg": INIT_LAT,
         "noise": noise,
     }

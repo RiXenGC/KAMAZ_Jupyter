@@ -1,18 +1,13 @@
 """
 LC ИНС/СНС: UKF с ориентацией в векторе состояния.
-
-Та же модель, что и InsGnssEKF, но прогноз и обновление через unscented
-преобразование. Использует сигма-точки (Julier–Uhlmann) для нелинейного
-распространения распределения.
-
-Используем filterpy.kalman.UnscentedKalmanFilter с MerweScaledSigmaPoints.
 """
 
 import numpy as np
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
+from src.config.constants import INIT_LAT, OMEGA_E
+
 
 from src.navigation.ekf import (
-    OMEGA_E,
     skew,
     quat_mul,
     quat_to_dcm,
@@ -26,7 +21,6 @@ class InsGnssUKF:
 
     def __init__(
         self,
-        lat0_rad,
         fs_imu,
         fs_gps,
         sigma_a_n,
@@ -45,6 +39,7 @@ class InsGnssUKF:
         alpha=1e-3,
         beta=2.0,
         kappa=0.0,
+        lat0_rad=np.deg2rad(INIT_LAT),
     ):
         self.dt = 1.0 / fs_imu
         self.lat0 = lat0_rad

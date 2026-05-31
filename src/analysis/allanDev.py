@@ -3,7 +3,7 @@ import math
 import numpy as np
 from gnss_ins_sim.sim import imu_model, ins_sim
 from src.config.config import IMU_ERR
-from src.config.constants import FS_IMU, D2R
+from src.config.constants import FS_IMU
 from gnss_ins_sim.allan.allan import allan_var
 
 motion = os.path.abspath(".//gnss_ins_sim//motion_def-Allan.csv")

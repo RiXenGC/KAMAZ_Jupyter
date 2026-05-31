@@ -7,18 +7,10 @@ LC ИНС/СНС: nominal-state EKF с ориентацией в векторе 
 Для EKF используется error-state представление 15-D:
     δx = [δr_n (3), δv_n (3), δθ (3), δb_a (3), δb_g (3)]^T,
 где δθ — малый поворот, q_bn ← q_bn ⊗ exp(δθ/2).
-
-filterpy не используем — нелинейный прогноз механизации удобнее писать руками,
-а Kalman update пишется в 4 строки. Это даёт прозрачный код, который точно
-соответствует формулам (61)-(66).
-
-Конвенция: NED nav-frame, FRD body. Кватернион [w,x,y,z] (scalar-first),
-поворот body → nav.
 """
 
 import numpy as np
-
-OMEGA_E = 7.2921151467e-5
+from src.config.constants import OMEGA_E, INIT_LAT
 
 
 def skew(v):
@@ -82,7 +74,6 @@ class InsGnssEKF:
 
     def __init__(
         self,
-        lat0_rad,
         fs_imu,
         fs_gps,
         sigma_a_n,
@@ -98,6 +89,7 @@ class InsGnssEKF:
         init_q=np.array([1.0, 0.0, 0.0, 0.0]),
         init_ba=np.zeros(3),
         init_bg=np.zeros(3),
+        lat0_rad=np.deg2rad(INIT_LAT),
     ):
         self.dt = 1.0 / fs_imu
         self.lat0 = lat0_rad
@@ -151,7 +143,7 @@ class InsGnssEKF:
         H[3:6, 3:6] = np.eye(3)
         self.H = H
 
-    # ---------- ПРОГНОЗ ----------
+    # Априорная оценка
     def predict(self, accel_b, gyro_b):
         dt = self.dt
         a_b = accel_b - self.b_a
@@ -187,7 +179,7 @@ class InsGnssEKF:
         F[12:15, 12:15] = -np.eye(3) / self.tau_bg
         return F
 
-    # ---------- ОБНОВЛЕНИЕ ----------
+    # Апостериорная оценка
     def update_gnss(self, r_gps_ned, v_gps_ned):
         z = np.concatenate([r_gps_ned - self.r, v_gps_ned - self.v])
         H, R, P = self.H, self.R, self.P

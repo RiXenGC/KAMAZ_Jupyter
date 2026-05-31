@@ -1,3 +1,5 @@
+import numpy as np
+
 # Constants for project
 # Geodesy (WGS-84)
 A_WGS84 = 6378137.0  # большая полуось, м
@@ -22,7 +24,5 @@ MAX_ACCEL_LAT = 0.8  # m/s^2 — поперечное при повороте
 MAX_ACCEL_VERT = 0.5  # m/s^2 — вертикальное
 MAX_JERK = 0.3  # m/s^3
 
-
 # Other constants
-D2R = 3.14 / 180
-G = 9.81
+D2R = np.pi / 180

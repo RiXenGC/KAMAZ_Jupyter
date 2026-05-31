@@ -11,17 +11,25 @@ from matplotlib.colors import Normalize
 # Import Times New Roman xDDD
 import matplotlib.font_manager as fm
 
-# Прямо обращаемся к папке шрифтов вашей Windows через WSL
-font_path = "/mnt/c/Windows/Fonts/times.ttf"
+_FONT_CANDIDATES = [
+    "/mnt/c/Windows/Fonts/times.ttf",
+    "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+]
 
-if os.path.exists(font_path):
-    # Добавляем шрифт напрямую в менеджер Matplotlib
-    fm.fontManager.addfont(font_path)
-    # Устанавливаем его по умолчанию для всех графиков
-    plt.rcParams["font.family"] = "Times New Roman"
-    print("Шрифт Times New Roman загружен из Windows")
-else:
-    print(f"Ошибка: .ttf для Times New Roman не найден по пути {font_path}")
+_loaded = False
+for _fp in _FONT_CANDIDATES:
+    if os.path.exists(_fp):
+        fm.fontManager.addfont(_fp)
+        try:
+            plt.rcParams["font.family"] = fm.FontProperties(fname=_fp).get_name()
+            _loaded = True
+            break
+        except Exception:
+            pass
+
+if not _loaded:
+    plt.rcParams["font.family"] = "DejaVu Serif"
 
 
 plt.rcParams.update(
@@ -33,7 +41,6 @@ plt.rcParams.update(
         "grid.linestyle": "--",
         "axes.spines.top": False,
         "axes.spines.right": False,
-        "font.family": "Times New Roman",
         "font.size": 20,
         "axes.titlesize": 24,
         "axes.titleweight": "bold",
@@ -59,11 +66,8 @@ def _save(fig, save_dir, name):
     fig.savefig(f"{save_dir}/{name}.png", pad_inches=0.5)
 
 
-# ============ ГРАФИКИ СИГНАЛОВ IMU ============
-
-
+# Графики ИИМ
 def plot_accel_signal(time, accel, title_suffix="", save_dir=None):
-    """Один график акселерометра."""
     fig, ax = plt.subplots(figsize=(10, 4.2))
     for i, lbl in enumerate(["x", "y", "z"]):
         ax.plot(
@@ -76,7 +80,7 @@ def plot_accel_signal(time, accel, title_suffix="", save_dir=None):
         )
     ax.set_xlabel("Время, с")
     ax.set_ylabel("Ускорение, м/с²")
-    ax.set_title(f"Показания акселерометра в body-frame{title_suffix}")
+    ax.set_title(f"Показания акселерометра в связанной СК{title_suffix}")
     ax.legend(loc="upper right", ncol=3)
     fig.tight_layout()
     _save(fig, save_dir, "accel_signal")
@@ -84,7 +88,6 @@ def plot_accel_signal(time, accel, title_suffix="", save_dir=None):
 
 
 def plot_gyro_signal(time, gyro, title_suffix="", save_dir=None):
-    """Один график гироскопа."""
     fig, ax = plt.subplots(figsize=(10, 4.2))
     gyro_deg = np.rad2deg(gyro)
     for i, lbl in enumerate(["x", "y", "z"]):
@@ -98,16 +101,14 @@ def plot_gyro_signal(time, gyro, title_suffix="", save_dir=None):
         )
     ax.set_xlabel("Время, с")
     ax.set_ylabel("Угловая скорость, °/с")
-    ax.set_title(f"Показания гироскопа в body-frame{title_suffix}")
+    ax.set_title(f"Показания гироскопа в связанной СК{title_suffix}")
     ax.legend(loc="upper right", ncol=3)
     fig.tight_layout()
     _save(fig, save_dir, "gyro_signal")
     return fig
 
 
-# ============ СПЕКТРАЛЬНЫЙ АНАЛИЗ ============
-
-
+# Спектральный анализ
 def plot_psd(
     time,
     signal_data,
@@ -118,7 +119,6 @@ def plot_psd(
     save_dir=None,
     fname="psd",
 ):
-    """Спектральная плотность мощности (метод Уэлча)."""
     fig, ax = plt.subplots(figsize=(10, 4.5))
     for i, lbl in enumerate(channel_names):
         f, Pxx = signal.welch(
@@ -166,7 +166,6 @@ def plot_spectrogram_2d(
     save_dir=None,
     fname="spectrogram_2d",
 ):
-    """2D-спектрограмма (имшоу с цветовой картой)."""
     fig, ax = plt.subplots(figsize=(10, 5))
     f, t_spec, Sxx = signal.spectrogram(
         signal_data_1ch,
@@ -234,14 +233,10 @@ def plot_spectrogram_3d(
     min_db = max_db - 50.0
     Sxx_db_clipped = np.clip(Sxx_db, a_min=min_db, a_max=max_db)
 
-    # Транспонируем для 3D сетки
     z_data = Sxx_db_clipped.T
 
-    # ГАУССОВО СГЛАЖИВАНИЕ (убирает ломаные "иголки")
-    # Параметр sigma=1.5 делает поверхность визуально обтекаемой, не ломая физику пиков.
     z_data_smooth = gaussian_filter(z_data, sigma=1.5)
 
-    # Создаем сетку координат
     f_grid, t_grid = np.meshgrid(f, t_spec)
 
     # Инициализация 3D сцены
@@ -269,13 +264,7 @@ def plot_spectrogram_3d(
         f"Трёхмерная спектрограмма {sensor_name}, ось {channel_name}", fontsize=24
     )
 
-    # Немного приподнимем угол обзора, чтобы лучше видеть "пол" (elev=35)
     ax.view_init(elev=35, azim=-55)
-
-    # Делаем прозрачными стенки графика, чтобы они не отвлекали
-    # ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
-    # ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
-    # ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
 
     # Добавляем цветовую шкалу напрямую от поверхности `surf`
     cbar = fig.colorbar(surf, ax=ax, shrink=0.6, aspect=12, pad=0.1)
@@ -286,7 +275,7 @@ def plot_spectrogram_3d(
     return fig
 
 
-# ============ ДЕВИАЦИЯ АЛЛАНА ============
+# Девиация Аллана
 
 
 def allan_deviation(data, fs, max_tau_factor=0.4):
@@ -351,9 +340,7 @@ def plot_allan_simulated(gyro_static, accel_static, fs, save_dir=None):
     return fig_gyro, fig
 
 
-# ============ ОПОРНАЯ ТРАЕКТОРИЯ ============
-
-
+# Reference trajectory
 def plot_trajectory_3d(ref_pos_ned, est_pos_ned=None, save_dir=None):
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
@@ -421,7 +408,6 @@ def plot_velocity_ned(time, ref_vel, est_vel=None, save_dir=None):
 
 
 def plot_euler_angles(time, ref_euler, est_euler=None, save_dir=None):
-    """3 отдельных графика для yaw, pitch, roll."""
     figs = []
     for i, name in enumerate(["Рысканье", "Тангаж", "Крен"]):
         fig, ax = plt.subplots(figsize=(10, 3.8))
@@ -454,8 +440,6 @@ def plot_euler_angles(time, ref_euler, est_euler=None, save_dir=None):
 
 
 # ============ ОШИБКИ НАВИГАЦИИ ============
-
-
 def plot_position_error(time, est_pos, ref_pos, save_dir=None):
     fig, ax = plt.subplots(figsize=(10, 4.2))
     err = est_pos - ref_pos
@@ -490,13 +474,7 @@ def plot_attitude_error(time, est_euler, ref_euler, save_dir=None):
 
 
 # ============ ПАРАМЕТРИЧЕСКИЙ АНАЛИЗ БЕТТА ============
-
-
 def plot_beta_sweep(time, results_dict, ref_euler, save_dir=None):
-    """
-    results_dict: {beta_value: estimated_euler_array}
-    Для каждой компоненты — отдельный график со всеми бета.
-    """
     figs = []
     cmap = plt.cm.viridis
     betas = sorted(results_dict.keys())

@@ -3,13 +3,10 @@ from scipy.integrate import cumulative_trapezoid
 from ahrs.filters import Madgwick, Mahony
 from ahrs.common.orientation import q2R
 
-from src.config.constants import G0, OMEGA_E
+from src.config.constants import G0, OMEGA_E, INIT_LAT
 
-# --- Матрицы смены конвенций ----------------------------------------------
-# ahrs.Madgwick/Mahony жёстко работают в конвенции z-вверх (ENU/FLU):
-# в покое ждут acc = [0,0,+1]. gnss-ins-sim даёт NED-body (FRD, z-вниз),
-# в покое acc = [0,0,-9.8]. Поэтому для ФИЛЬТРА переводим данные в FLU,
-# а результат (ориентацию/силу) возвращаем обратно в NED.
+# ahrs.Madgwick/Mahony работают в ENU/FLU: acc = [0,0,+1].
+# gnss-ins-sim работает в NED/FRD: acc = [0,0,-9.8].
 T_BODY = np.diag([1.0, -1.0, -1.0])  # FRD <-> FLU (body)
 T_NAV = np.array(
     [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]]  # ENU <-> NED (nav)
@@ -17,21 +14,19 @@ T_NAV = np.array(
 
 
 def gravity_ned(lat_rad, h):
-    """Гравитация в NED: вектор (0, 0, +g) — вниз по +z."""
     sl2 = np.sin(lat_rad) ** 2
     g = G0 * (1 + 0.0052790414 * sl2 + 0.0000232718 * sl2**2) - 3.087e-6 * h
     return np.array([0.0, 0.0, g])
 
 
 def earth_rate_ned(lat_rad):
-    """Скорость вращения Земли в NED: (Ω·cos, 0, -Ω·sin)."""
     return np.array([OMEGA_E * np.cos(lat_rad), 0.0, -OMEGA_E * np.sin(lat_rad)])
 
 
-# --- Конвертация ориентации между NED и ENU --------------------------------
 def _R_to_quat(R):
-    """DCM -> кватернион [w,x,y,z] (метод Шеппарда)."""
+
     tr = np.trace(R)
+
     if tr > 0:
         S = np.sqrt(tr + 1.0) * 2
         w = 0.25 * S
@@ -61,22 +56,20 @@ def _R_to_quat(R):
 
 
 def _flip_quat(q):
-    """Кватернион NED<->ENU (инволюция): R' = T_nav · R · T_body."""
+    """Кватернион NED<->ENU: R' = T_nav · R · T_body."""
     R = q2R(q)
     R2 = T_NAV @ R @ T_BODY
     return _R_to_quat(R2)
 
 
 class SINSBase:
-    """Базовый класс SINS с механизацией. Метод оценки ориентации — в наследниках."""
-
     def __init__(
         self,
         fs,
         init_pos_ned=np.zeros(3),
         init_vel_ned=np.zeros(3),
         init_quat=np.array([1.0, 0.0, 0.0, 0.0]),
-        lat0_deg=55.44,
+        lat0_deg=INIT_LAT,
     ):
         self.fs = fs
         self.dt = 1.0 / fs
@@ -139,18 +132,23 @@ class SINSBase:
         return eul
 
     def run(self, accel_b, gyro_b):
-        # 1) NED-body (FRD) -> ENU-body (FLU): фильтр ahrs зашит на z-вверх
+
+        # FRD -> FLU
         accel_flu = accel_b @ T_BODY
         gyro_flu = gyro_b @ T_BODY
-        # 2) стартовый кватернион NED -> ENU для инициализации фильтра
+
+        # NED -> ENU для фильтра
         q0_enu = _flip_quat(self.q0)
-        # 3) оценка ориентации в ENU
+
         Q_enu = self.estimate_attitude(accel_flu, gyro_flu, q0_enu)
-        # 4) удельная сила: ENU -> NED
+
+        # Specific force ENU -> NED
         f_n_enu = self.specific_force_to_nframe(accel_flu, Q_enu)
         f_n = f_n_enu @ T_NAV
-        # 5) механизация в NED
+
+        # Mechanization NED
         a_n, v_n, p_n = self.mechanize(f_n)
+
         # 6) ориентация на выход — в NED
         euler = self._euler_enu_to_ned(self._quat_to_euler_zyx(Q_enu))
         Q_ned = np.array([_flip_quat(q) for q in Q_enu])
@@ -160,11 +158,12 @@ class SINSBase:
         self.v_hist = v_n
         self.p_hist = p_n
         self.euler_hist = euler
-        return Q_ned, v_n, p_n, euler
+
+        return {"q_NED": Q_ned, "v_n": v_n, "p_n": p_n, "euler": euler}
 
 
+# Orientation filters
 class SINSMadgwick(SINSBase):
-    """SINS с фильтром Маджвика (IMU mode, 6-DOF)."""
 
     def __init__(self, fs, beta=0.03, **kwargs):
         super().__init__(fs, **kwargs)
@@ -181,7 +180,6 @@ class SINSMadgwick(SINSBase):
 
 
 class SINSMahony(SINSBase):
-    """SINS с фильтром Махони (IMU mode, 6-DOF)."""
 
     def __init__(self, fs, k_P=0.1, k_I=0.001, **kwargs):
         super().__init__(fs, **kwargs)
@@ -198,8 +196,9 @@ class SINSMahony(SINSBase):
         return Q
 
 
+# Select filter
 def make_sins(filter_name, fs, **kwargs):
-    """Фабрика для удобного выбора в ноутбуке."""
+
     if filter_name.lower() == "madgwick":
         return SINSMadgwick(fs, **kwargs)
     elif filter_name.lower() == "mahony":
