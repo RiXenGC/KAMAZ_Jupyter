@@ -149,7 +149,7 @@ class SINSBase:
         # Mechanization NED
         a_n, v_n, p_n = self.mechanize(f_n)
 
-        # 6) ориентация на выход — в NED
+        # ориентация на выход — в NED
         euler = self._euler_enu_to_ned(self._quat_to_euler_zyx(Q_enu))
         Q_ned = np.array([_flip_quat(q) for q in Q_enu])
 

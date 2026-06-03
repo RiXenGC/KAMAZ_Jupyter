@@ -7,6 +7,7 @@ from scipy.ndimage import gaussian_filter
 from pathlib import Path
 from matplotlib import cm
 from matplotlib.colors import Normalize
+from src.analysis.metrics import error_norm_series
 
 # Import Times New Roman xDDD
 import matplotlib.font_manager as fm
@@ -538,3 +539,41 @@ def plot_beta_sweep(time, results_dict, ref_euler, save_dir=None):
     _save(fig, save_dir, "beta_sweep_rmse")
     figs.append(fig)
     return figs
+
+
+# Compare filters
+
+
+def plot_overlay_trajectory(ref, ekf, ukf, fgo, save_dir=None):
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.plot(ref[:, 1], ref[:, 0], color="#264653", lw=2.5, label="Опорная")
+    ax.plot(ekf[:, 1], ekf[:, 0], "--", color="#E63946", lw=1.6, label="EKF")
+    ax.plot(ukf[:, 1], ukf[:, 0], "-.", color="#2A9D8F", lw=1.6, label="UKF")
+    ax.plot(fgo[:, 1], fgo[:, 0], ":", color="#E76F51", lw=2.0, label="FGO")
+    ax.scatter(ref[0, 1], ref[0, 0], c="green", s=80, zorder=5, label="Старт")
+    ax.scatter(ref[-1, 1], ref[-1, 0], c="black", s=80, zorder=5, label="Финиш")
+    ax.set_xlabel("East, м")
+    ax.set_ylabel("North, м")
+    ax.set_title("Траектория: сравнение методов")
+    ax.legend()
+    ax.axis("equal")
+    ax.grid(alpha=0.3)
+    _save(fig, save_dir, f"overlay_trajectory")
+    return fig
+
+
+def plot_overlay_error(t, ref, methods: dict, save_dir=None):
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    colors = {"EKF": "#E63946", "UKF": "#2A9D8F", "FGO": "#E76F51"}
+    for name, est in methods.items():
+        ax.plot(
+            t, error_norm_series(est, ref), lw=1.6, color=colors.get(name), label=name
+        )
+    ax.set_yscale("log")
+    ax.set_xlabel("Время, с")
+    ax.set_ylabel("|Δr|, м (лог)")
+    ax.set_title("Накопленная ошибка положения: EKF / UKF / FGO")
+    ax.legend()
+    ax.grid(alpha=0.3, which="both")
+    _save(fig, save_dir, f"overlay_error")
+    return fig

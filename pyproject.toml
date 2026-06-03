@@ -10,9 +10,9 @@ dependencies = [
     "gnss-ins-sim",
     "gtsam>=4.2",
     "matplotlib>=3.10.9",
-    "numpy>=2.4.6",
-    "pandas>=3.0.3",
-    "scipy>=1.17.1",
+    "numpy<2",
+    "pandas<2.2",
+    "scipy<1.13",
 ]
 
 [tool.uv]
