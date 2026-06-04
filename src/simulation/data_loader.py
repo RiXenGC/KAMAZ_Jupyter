@@ -17,7 +17,9 @@ def load_data(sim_dir):
     # Output data for IMU (FS_IMU)
     imu_time = _read("time.csv").flatten()
     accel = _read("accel-0.csv")  # m/s^2
-    gyro = _read("gyro-0.csv")  # rad/s
+    gyro = _read("gyro-0.csv")  # deg/s
+    ref_accel = _read("ref_accel.csv")  # m/s^2
+    ref_gyro = _read("ref_gyro.csv")  # deg/s
 
     # Output data for GPS (FS_GPS)
     gps = _read("gps-0.csv")  # [pos(3), vel(3)]
@@ -33,6 +35,8 @@ def load_data(sim_dir):
     return {
         "accel": accel,
         "gyro": gyro,
+        "ref_accel": ref_accel,
+        "ref_gyro": ref_gyro,
         "imu_time": imu_time,
         "gps": gps,
         "gps_time": gps_time,

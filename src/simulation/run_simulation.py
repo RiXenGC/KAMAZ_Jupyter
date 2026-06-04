@@ -1,9 +1,10 @@
+import numpy as np
 from gnss_ins_sim.sim import imu_model, ins_sim
 from src.config.config import IMU_ERR, GPS_ERR
-from src.config.constants import FS_IMU, FS_GPS
+from src.config.constants import FS_IMU, FS_GPS, MAX_ACCEL, MAX_ACCEL_VERT, MAX_JERK
 
-mode = "0.8, 0.07, 0.1"
-# mode = np.array([MAX_ACCEL_LAT, MAX_ACCEL_VERT, MAX_JERK])
+# mode = "0.8, 0.07, 0.1"
+mode = np.array([MAX_ACCEL, MAX_ACCEL_VERT, MAX_JERK])
 # This is not implemented yet. A built-in 'high_mobility' mode is used.
 #         or a numpy array of size (3,) to customize the sim mode.
 #             [max_acceleration, max_angular_acceleration, max_angular_velocity],

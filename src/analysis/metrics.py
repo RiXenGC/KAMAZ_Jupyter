@@ -65,17 +65,15 @@ def velocity_metrics(est_vel, ref_vel):
 
 def attitude_metrics(est_euler_deg, ref_euler_deg):
     """Ошибка приводится в диапазон [−180, 180]. Порядок столбцов: [yaw, pitch, roll]"""
-    e = _err(est_euler_deg, ref_euler_deg)
-    e = (e + 180.0) % 360.0 - 180.0  # wrap к [−180,180]
-    rms = np.sqrt(np.mean(e**2, axis=0))
-    return {
-        "rms_yaw": float(rms[0]),
-        "rms_pitch": float(rms[1]),
-        "rms_roll": float(rms[2]),
-        "max_yaw": float(np.max(np.abs(e[:, 0]))),
-        "max_pitch": float(np.max(np.abs(e[:, 1]))),
-        "max_roll": float(np.max(np.abs(e[:, 2]))),
-    }
+    out = {}
+    names = ['yaw', 'pitch', 'roll']
+    for i, nm in enumerate(names):
+        est_un = np.unwrap(np.deg2rad(est_euler_deg[:, i]))
+        ref_un = np.unwrap(np.deg2rad(ref_euler_deg[:, i]))
+        e = np.rad2deg(est_un - ref_un)
+        out[f'rms_{nm}'] = float(np.sqrt(np.mean(e**2)))
+        out[f'max_{nm}'] = float(np.max(np.abs(e)))
+    return out
 
 
 def compare_methods(results, ref_pos, ref_vel=None, ref_euler_deg=None):

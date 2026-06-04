@@ -193,7 +193,7 @@ class InsGnssEKF:
     def _inject(self, dx):
         self.r += dx[0:3]
         self.v += dx[3:6]
-        self.q = quat_mul(self.q, quat_from_rotvec(dx[6:9]))
+        self.q = quat_mul(quat_from_rotvec(dx[6:9]), self.q)
         self.q /= np.linalg.norm(self.q)
         self.b_a += dx[9:12]
         self.b_g += dx[12:15]

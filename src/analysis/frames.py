@@ -45,19 +45,22 @@ def prepare_scenario(
     data = load_data(out_dir)
 
     # Init point
-    lat0 = np.deg2rad(INIT_LAT)
-    lon0 = np.deg2rad(INIT_LON)
-    h0 = np.deg2rad(INIT_ALT)
+    lat0 = np.deg2rad(data["ref_pos"][0, 0])
+    lon0 = np.deg2rad(data["ref_pos"][0, 1])
+    h0 = data["ref_pos"][0, 2]
 
     # IMU
     accel = np.asarray(data["accel"])
-    gyro = np.asarray(data["gyro"])
+    gyro = np.deg2rad(np.asarray(data["gyro"]))  # rad/s
+    ref_accel = np.asarray(data["ref_accel"])
+    ref_gyro = np.deg2rad(np.asarray(data["ref_gyro"]))  # rad/s
     imu_time = np.asarray(data["imu_time"])
 
     # Reference
     lat = np.deg2rad(data["ref_pos"][:, 0])
     lon = np.deg2rad(data["ref_pos"][:, 1])
     h = data["ref_pos"][:, 2]
+
     ref_pos_ned = lla_to_ned(lat, lon, h, lat0, lon0, h0)
     ref_vel_ned = np.asarray(data["ref_vel"])
     ref_euler_ned = np.deg2rad(np.asarray(data["ref_att"]))
@@ -71,7 +74,7 @@ def prepare_scenario(
     gps_vel_ned = np.asarray(data["gps"][:, 3:6])
     gps_idx = np.searchsorted(imu_time, data["gps_time"])
 
-    # init quaternio
+    # init quaternion
     q0 = euler_to_quat_zyx(*ref_euler_ned[0])
 
     # Noise
@@ -90,6 +93,8 @@ def prepare_scenario(
     return {
         "accel": accel,
         "gyro": gyro,
+        "ref_accel": ref_accel,
+        "ref_gyro": ref_gyro,
         "imu_time": imu_time,
         "accel_vib": accel_vib,
         "gyro_vib": gyro_vib,
@@ -100,6 +105,6 @@ def prepare_scenario(
         "gps_vel_ned": gps_vel_ned,
         "gps_idx": gps_idx,
         "q0": q0,
-        "lat0_deg": INIT_LAT,
+        "lat0_deg": data["ref_pos"][0, 1],
         "noise": noise,
     }

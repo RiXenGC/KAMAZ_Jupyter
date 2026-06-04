@@ -1,59 +1,12 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 from scipy import signal
 from scipy.ndimage import gaussian_filter
 from pathlib import Path
 from matplotlib import cm
-from matplotlib.colors import Normalize
 from src.analysis.metrics import error_norm_series
-
-# Import Times New Roman xDDD
-import matplotlib.font_manager as fm
-
-_FONT_CANDIDATES = [
-    "/mnt/c/Windows/Fonts/times.ttf",
-    "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-]
-
-_loaded = False
-for _fp in _FONT_CANDIDATES:
-    if os.path.exists(_fp):
-        fm.fontManager.addfont(_fp)
-        try:
-            plt.rcParams["font.family"] = fm.FontProperties(fname=_fp).get_name()
-            _loaded = True
-            break
-        except Exception:
-            pass
-
-if not _loaded:
-    plt.rcParams["font.family"] = "DejaVu Serif"
-
-
-plt.rcParams.update(
-    {
-        "figure.facecolor": "white",
-        "axes.facecolor": "white",
-        "axes.grid": True,
-        "grid.alpha": 0.35,
-        "grid.linestyle": "--",
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "font.size": 20,
-        "axes.titlesize": 24,
-        "axes.titleweight": "bold",
-        "axes.labelsize": 20,
-        "axes.xmargin": 0,
-        "legend.fontsize": 14,
-        "legend.framealpha": 0.95,
-        "figure.dpi": 110,
-        "savefig.dpi": 200,
-        "savefig.bbox": "tight",
-    }
-)
+from src.analysis.plot_style import METHOD_STYLE
 
 COLORS = {"x": "#E63946", "y": "#2A9D8F", "z": "#1D3557"}
 COLOR_REF = "#264653"
@@ -64,11 +17,11 @@ def _save(fig, save_dir, name):
     if save_dir is None:
         return
     Path(save_dir).mkdir(parents=True, exist_ok=True)
-    fig.savefig(f"{save_dir}/{name}.png", pad_inches=0.5)
+    fig.savefig(f"{save_dir}/{name}.png")  # pad_inches=0.5
 
 
-# Графики ИИМ
 def plot_accel_signal(time, accel, title_suffix="", save_dir=None):
+    """График ИИМ"""
     fig, ax = plt.subplots(figsize=(10, 4.2))
     for i, lbl in enumerate(["x", "y", "z"]):
         ax.plot(
@@ -90,18 +43,17 @@ def plot_accel_signal(time, accel, title_suffix="", save_dir=None):
 
 def plot_gyro_signal(time, gyro, title_suffix="", save_dir=None):
     fig, ax = plt.subplots(figsize=(10, 4.2))
-    gyro_deg = np.rad2deg(gyro)
     for i, lbl in enumerate(["x", "y", "z"]):
         ax.plot(
             time,
-            gyro_deg[:, i],
+            gyro[:,i],
             color=COLORS[lbl],
             label=f"$\\omega_{lbl}$",
             linewidth=0.7,
             alpha=0.9,
         )
     ax.set_xlabel("Время, с")
-    ax.set_ylabel("Угловая скорость, °/с")
+    ax.set_ylabel("Угловая скорость, рад/с")
     ax.set_title(f"Показания гироскопа в связанной СК{title_suffix}")
     ax.legend(loc="upper right", ncol=3)
     fig.tight_layout()
@@ -109,7 +61,6 @@ def plot_gyro_signal(time, gyro, title_suffix="", save_dir=None):
     return fig
 
 
-# Спектральный анализ
 def plot_psd(
     time,
     signal_data,
@@ -120,6 +71,9 @@ def plot_psd(
     save_dir=None,
     fname="psd",
 ):
+    """
+    Спектральная плотность мощности
+    """
     fig, ax = plt.subplots(figsize=(10, 4.5))
     for i, lbl in enumerate(channel_names):
         f, Pxx = signal.welch(
@@ -276,72 +230,9 @@ def plot_spectrogram_3d(
     return fig
 
 
-# Девиация Аллана
-
-
-def allan_deviation(data, fs, max_tau_factor=0.4):
-    """Вычисление девиации Аллана методом overlapping samples"""
-    N = len(data)
-    t0 = 1.0 / fs
-    # Логарифмическая сетка тау
-    max_m = int(N * max_tau_factor)
-    m_values = np.unique(np.logspace(0, np.log10(max_m), 100).astype(int))
-
-    taus = m_values * t0
-    sigmas = np.zeros(len(m_values))
-
-    # Кумулятивная сумма для эффективности
-    theta = np.cumsum(data) * t0
-
-    for i, m in enumerate(m_values):
-        # Overlapping Allan variance
-        diff = theta[2 * m :] - 2 * theta[m:-m] + theta[: -2 * m]
-        sigmas[i] = np.sqrt(np.mean(diff**2) / (2 * (m * t0) ** 2))
-
-    return taus, sigmas
-
-
-def plot_allan_simulated(gyro_static, accel_static, fs, save_dir=None):
-    """Девиация Аллана для симулированных статических данных.
-    Накладывать на референс из datasheet вы будете вручную."""
-    # --- Гироскопы ---
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    for i, lbl in enumerate(["x", "y", "z"]):
-        gyro_deg_hr = np.rad2deg(gyro_static[:, i]) * 3600  # в °/ч
-        taus, sigmas = allan_deviation(gyro_deg_hr, fs)
-        ax.loglog(
-            taus, sigmas, color=COLORS[lbl], label=f"Ось {lbl.upper()}", linewidth=2
-        )
-
-    ax.set_xlabel("Время осреднения τ, с")
-    ax.set_ylabel("Отклонение Аллана, °/ч")
-    ax.set_title("Диаграмма Аллана для гироскопов")
-    ax.legend(loc="best")
-    ax.grid(True, which="both", alpha=0.35)
-    fig.tight_layout()
-    _save(fig, save_dir, "allan_gyro")
-    fig_gyro = fig
-
-    # --- Акселерометры ---
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    for i, lbl in enumerate(["x", "y", "z"]):
-        acc_ug = accel_static[:, i] / 9.81 * 1e6  # в мкg
-        taus, sigmas = allan_deviation(acc_ug, fs)
-        ax.loglog(
-            taus, sigmas, color=COLORS[lbl], label=f"Ось {lbl.upper()}", linewidth=2
-        )
-
-    ax.set_xlabel("Время осреднения τ, с")
-    ax.set_ylabel("Отклонение Аллана, мкg")
-    ax.set_title("Диаграмма Аллана для акселерометров")
-    ax.legend(loc="best")
-    ax.grid(True, which="both", alpha=0.35)
-    fig.tight_layout()
-    _save(fig, save_dir, "allan_accel")
-    return fig_gyro, fig
-
-
 # Reference trajectory
+
+
 def plot_trajectory_3d(ref_pos_ned, est_pos_ned=None, save_dir=None):
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
@@ -440,7 +331,9 @@ def plot_euler_angles(time, ref_euler, est_euler=None, save_dir=None):
     return figs
 
 
-# ============ ОШИБКИ НАВИГАЦИИ ============
+# Ошибки
+
+
 def plot_position_error(time, est_pos, ref_pos, save_dir=None):
     fig, ax = plt.subplots(figsize=(10, 4.2))
     err = est_pos - ref_pos
@@ -474,7 +367,7 @@ def plot_attitude_error(time, est_euler, ref_euler, save_dir=None):
     return fig
 
 
-# ============ ПАРАМЕТРИЧЕСКИЙ АНАЛИЗ БЕТТА ============
+# Анализ бетта
 def plot_beta_sweep(time, results_dict, ref_euler, save_dir=None):
     figs = []
     cmap = plt.cm.viridis
@@ -539,41 +432,3 @@ def plot_beta_sweep(time, results_dict, ref_euler, save_dir=None):
     _save(fig, save_dir, "beta_sweep_rmse")
     figs.append(fig)
     return figs
-
-
-# Compare filters
-
-
-def plot_overlay_trajectory(ref, ekf, ukf, fgo, save_dir=None):
-    fig, ax = plt.subplots(figsize=(9, 7))
-    ax.plot(ref[:, 1], ref[:, 0], color="#264653", lw=2.5, label="Опорная")
-    ax.plot(ekf[:, 1], ekf[:, 0], "--", color="#E63946", lw=1.6, label="EKF")
-    ax.plot(ukf[:, 1], ukf[:, 0], "-.", color="#2A9D8F", lw=1.6, label="UKF")
-    ax.plot(fgo[:, 1], fgo[:, 0], ":", color="#E76F51", lw=2.0, label="FGO")
-    ax.scatter(ref[0, 1], ref[0, 0], c="green", s=80, zorder=5, label="Старт")
-    ax.scatter(ref[-1, 1], ref[-1, 0], c="black", s=80, zorder=5, label="Финиш")
-    ax.set_xlabel("East, м")
-    ax.set_ylabel("North, м")
-    ax.set_title("Траектория: сравнение методов")
-    ax.legend()
-    ax.axis("equal")
-    ax.grid(alpha=0.3)
-    _save(fig, save_dir, f"overlay_trajectory")
-    return fig
-
-
-def plot_overlay_error(t, ref, methods: dict, save_dir=None):
-    fig, ax = plt.subplots(figsize=(10, 4.5))
-    colors = {"EKF": "#E63946", "UKF": "#2A9D8F", "FGO": "#E76F51"}
-    for name, est in methods.items():
-        ax.plot(
-            t, error_norm_series(est, ref), lw=1.6, color=colors.get(name), label=name
-        )
-    ax.set_yscale("log")
-    ax.set_xlabel("Время, с")
-    ax.set_ylabel("|Δr|, м (лог)")
-    ax.set_title("Накопленная ошибка положения: EKF / UKF / FGO")
-    ax.legend()
-    ax.grid(alpha=0.3, which="both")
-    _save(fig, save_dir, f"overlay_error")
-    return fig
