@@ -232,38 +232,36 @@ def plot_spectrogram_3d(
 
 # Reference trajectory
 
-
 def plot_trajectory_3d(ref_pos_ned, est_pos_ned=None, save_dir=None):
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
     ax.plot(
-        ref_pos_ned[:, 0],
-        ref_pos_ned[:, 1],
-        ref_pos_ned[:, 2],
-        color=COLOR_REF,
-        linewidth=2.2,
-        label="Опорная траектория",
+        ref_pos_ned[:, 0], ref_pos_ned[:, 1], ref_pos_ned[:, 2],
+        color=COLOR_REF, linewidth=2.2, label="Опорная траектория",
     )
     if est_pos_ned is not None:
         ax.plot(
-            est_pos_ned[:, 0],
-            est_pos_ned[:, 1],
-            est_pos_ned[:, 2],
-            color=COLOR_EST,
-            linewidth=1.5,
-            linestyle="--",
-            label="Оценка БИНС",
+            est_pos_ned[:, 0], est_pos_ned[:, 1], est_pos_ned[:, 2],
+            color=COLOR_EST, linewidth=1.5, linestyle="--", label="Оценка БИНС",
         )
     ax.scatter(*ref_pos_ned[0], color="green", s=80, label="Старт", zorder=5)
     ax.scatter(*ref_pos_ned[-1], color="black", s=80, label="Финиш", zorder=5)
+
     ax.set_xlabel("North, м", labelpad=14)
     ax.set_ylabel("East, м", labelpad=14)
-    ax.set_zlabel("Down, м", labelpad=14)
+    ax.set_zlabel("Down, м", labelpad=8)
     ax.set_title("Траектория", pad=12)
     ax.legend(loc="upper left")
-    # fig.tight_layout()
-    # fig.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0)
-    _save(fig, save_dir, "trajectory_3d")
+
+    # фиксируем ракурс и выносим подпись Z на видимую сторону
+    ax.view_init(elev=22, azim=-60)          # стабильный ракурс
+    # ax.zaxis.set_rotate_label(False)
+    # ax.zaxis.label.set_rotation(90)          # вертикальная подпись Z
+
+    if save_dir:
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        fig.savefig(f"{save_dir}/trajectory_3d.png", bbox_inches="tight", pad_inches=0.3)
     return fig
 
 
@@ -350,6 +348,38 @@ def plot_position_error(time, est_pos, ref_pos, save_dir=None):
     _save(fig, save_dir, "position_error")
     return fig
 
+def plot_velocity_error(time, ref_vel, est_vel, save_dir=None):
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    labels = ["North", "East", "Down"]
+    colors_v = [COLORS["x"], COLORS["y"], COLORS["z"]]
+
+    err = est_vel - ref_vel
+    for i, lbl in enumerate(labels):
+        ax.plot(
+            time,
+            err[:, i],
+            color=colors_v[i],
+            linewidth=1.3,
+            label=f"Δ{lbl}",
+        )
+    # модуль ошибки — чёрной пунктирной, поверх
+    ax.plot(
+        time,
+        np.linalg.norm(err, axis=1),
+        color="black",
+        linewidth=1.6,
+        linestyle="--",
+        label="|Δv|",
+        zorder=10,
+    )
+    ax.axhline(0, color="gray", linewidth=0.8, alpha=0.6)
+    ax.set_xlabel("Время, с")
+    ax.set_ylabel("Ошибка скорости, м/с")
+    ax.set_title("Накопленная ошибка скорости (БИНС)")
+    ax.legend(loc="best", ncol=2)
+    fig.tight_layout()
+    _save(fig, save_dir, "velocity_error")
+    return fig
 
 def plot_attitude_error(time, est_euler, ref_euler, save_dir=None):
     fig, ax = plt.subplots(figsize=(10, 4.2))
@@ -368,6 +398,7 @@ def plot_attitude_error(time, est_euler, ref_euler, save_dir=None):
 
 
 # Анализ бетта
+
 def plot_beta_sweep(time, results_dict, ref_euler, save_dir=None):
     figs = []
     cmap = plt.cm.viridis
@@ -432,3 +463,51 @@ def plot_beta_sweep(time, results_dict, ref_euler, save_dir=None):
     _save(fig, save_dir, "beta_sweep_rmse")
     figs.append(fig)
     return figs
+
+
+# Девиация Аллана
+
+def allan_deviation(data, fs, n_tau=80, max_tau_factor=0.4):
+    """Девиация Аллана. data — ряд (рад/с или м/с²), fs — Гц."""
+    N = len(data)
+    t0 = 1.0 / fs
+    max_m = int(N * max_tau_factor)
+    m = np.unique(np.logspace(0, np.log10(max_m), n_tau).astype(int))
+    m = m[m >= 1]
+    taus = m * t0
+    theta = np.cumsum(data) * t0          # интегрирование ряда
+    sigmas = np.zeros(len(m))
+    for i, mm in enumerate(m):
+        d = theta[2*mm:] - 2*theta[mm:-mm] + theta[:-2*mm]
+        sigmas[i] = np.sqrt(np.mean(d**2) / (2 * (mm * t0)**2))
+    return taus, sigmas
+
+
+def plot_allan_simulated(gyro_static, accel_static, fs, save_dir=None):
+    """Диаграммы Аллана: гироскопы (°/ч) и акселерометры (мкg)."""
+    # --- Гироскопы ---
+    fig_gyro, ax = plt.subplots(figsize=(9, 5.5))
+    for i, lbl in enumerate(["x", "y", "z"]):
+        gyro_deg_hr = np.rad2deg(gyro_static[:, i]) * 3600   # рад/с → °/ч
+        taus, sigmas = allan_deviation(gyro_deg_hr, fs)
+        ax.loglog(taus, sigmas, color=COLORS[lbl], label=f"Ось {lbl.upper()}", linewidth=2)
+    ax.set_xlabel("Время осреднения τ, с")
+    ax.set_ylabel("Девиация Аллана, °/ч")
+    ax.set_title("Диаграмма Аллана для гироскопов")
+    ax.legend(loc="best"); ax.grid(True, which="both", alpha=0.35)
+    fig_gyro.tight_layout()
+    _save(fig_gyro, save_dir, "allan_gyro")
+
+    # --- Акселерометры ---
+    fig_accel, ax = plt.subplots(figsize=(9, 5.5))
+    for i, lbl in enumerate(["x", "y", "z"]):
+        acc_ug = accel_static[:, i] / 9.81 * 1e6             # м/с² → мкg
+        taus, sigmas = allan_deviation(acc_ug, fs)
+        ax.loglog(taus, sigmas, color=COLORS[lbl], label=f"Ось {lbl.upper()}", linewidth=2)
+    ax.set_xlabel("Время осреднения τ, с")
+    ax.set_ylabel("Девиация Аллана, мкg")
+    ax.set_title("Диаграмма Аллана для акселерометров")
+    ax.legend(loc="best"); ax.grid(True, which="both", alpha=0.35)
+    fig_accel.tight_layout()
+    _save(fig_accel, save_dir, "allan_accel")
+    return fig_gyro, fig_accel

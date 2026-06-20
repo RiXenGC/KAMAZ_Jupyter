@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 
 # Distribution / packaging
+data/
 motion_profiles/
 generated_data/
 reports/

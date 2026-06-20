@@ -9,9 +9,12 @@ dependencies = [
     "filterpy>=1.4.5",
     "gnss-ins-sim",
     "gtsam>=4.2",
-    "matplotlib>=3.10.9",
+    "ipympl>=0.10.0",
+    "matplotlib>=3.7",
     "numpy<2",
     "pandas<2.2",
+    "pyarrow>=12,<16",
+    "pyqt5==5.15.11",
     "scipy<1.13",
 ]
 

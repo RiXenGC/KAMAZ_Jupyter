@@ -8,24 +8,17 @@ from src.analysis.plot_style import METHOD_STYLE
 
 
 def _style_axes(ax, logy=False):
-    ax.grid(True, which="major", alpha=0.25, lw=0.8)
-    ax.grid(True, which="minor", alpha=0.10, lw=0.5)
+    # рамка и сетка берутся из rcParams (plot_style) — как в visualization.py
     if not logy:
         ax.xaxis.set_minor_locator(AutoMinorLocator())
         ax.yaxis.set_minor_locator(AutoMinorLocator())
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
-    for s in ("left", "bottom"):
-        ax.spines[s].set_alpha(0.4)
-    ax.tick_params(length=0)
 
 
 def _save(fig, save_dir, name):
-    if save_dir:
-        os.makedirs(save_dir, exist_ok=True)
-        fig.savefig(
-            f"{save_dir}/{name}.png", dpi=170, bbox_inches="tight", facecolor="white"
-        )
+    if save_dir is None:
+        return
+    os.makedirs(save_dir, exist_ok=True)
+    fig.savefig(f"{save_dir}/{name}.png") 
 
 
 # ---//--- Функции отрисовки ---//---
@@ -128,20 +121,22 @@ def plot_overlay_trajectory_3d(
         linewidths=1.5,
         label="Финиш",
     )
-    ax.set_xlabel("North, м", labelpad=12)
-    ax.set_ylabel("East, м", labelpad=12)
-    ax.set_zlabel("Down, м", labelpad=10)
+    ax.set_xlabel("North, м", labelpad=14)
+    ax.set_ylabel("East, м", labelpad=14)
+    ax.set_zlabel("Down, м", labelpad=8)
     ax.set_title(title, fontweight="bold", pad=14)
     ax.legend(loc="upper left", framealpha=0.9, edgecolor="none")
-    ax.invert_zaxis()  # Down вниз — естественнее для NED
-    ax.grid(True, alpha=0.2)
-    if save_dir:
-        import os
+    ax.invert_zaxis()
 
+    # видимость подписи Down
+    ax.view_init(elev=22, azim=-60)
+    ax.zaxis.set_rotate_label(False)
+    ax.zaxis.label.set_rotation(90)
+    fig.subplots_adjust(right=0.85)        # освободить место справа под Down
+
+    if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        fig.savefig(
-            f"{save_dir}/{name}.png", dpi=170, bbox_inches="tight", facecolor="white"
-        )
+        fig.savefig(f"{save_dir}/{name}.png", bbox_inches="tight", pad_inches=0.3)
     return fig
 
 
@@ -201,7 +196,7 @@ def plot_overlay_attitude(
     """
     idx = {"yaw": 0, "pitch": 1, "roll": 2}[which]
     titles = {
-        "yaw": "Ошибка курса (рысканья)",
+        "yaw": "Ошибка курса",
         "pitch": "Ошибка тангажа",
         "roll": "Ошибка крена",
     }
