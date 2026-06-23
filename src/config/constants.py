@@ -1,29 +1,76 @@
+'''
+Константы в проекте
+'''
+
 import numpy as np
 
-# Constants for project
-# Geodesy (WGS-84)
+# -----//----- Геодезические константы (WGS-84) -----//-----
 A_WGS84 = 6378137.0  # большая полуось, м
 E2_WGS84 = 6.69437999014e-3  # квадрат эксцентриситета
 OMEGA_E = 7.2921151467e-5  # угловая скорость Земли, рад/с
 G0 = 9.7803267715  # экваториальная гравитация, м/с²
 
-# Starting point: Kuzbass (Kedrovsky Open-Pit Mine)
-INIT_LAT = 55.4400  # deg
-INIT_LON = 86.0500  # deg
+# -----//----- Опорная точка -----//-----
+INIT_LAT = 55.603859  # deg
+INIT_LON = 86.163695  # deg
 INIT_ALT = 250.0  # m
+OR_POINT = (INIT_LAT, INIT_LON, INIT_ALT)
 
-# Frequencies
+# -----//----- Частоты -----//-----
 FS_IMU = 400.0  # IMU sample frequency, Hz
 FS_REF = 400.0  # Hz, ref freq
 FS_GPS = 10
 
-# Динамические ограничения БелАЗ-7513 (гружёный, ~240 т)
-# need for mode = [max_acceleration, max_angular_acceleration, max_angular_velocity] [m/s/s, deg/s/s, deg/s]
+# -----//----- Ограничения БелАЗ-7513 -----//-----
+# mode = [max_acceleration, max_angular_acceleration, max_angular_velocity] [m/s/s, deg/s/s, deg/s]
 MAX_ACCEL = 0.5  # m/s^2 — максимальное ускорение
 MAX_ACCEL_VERT = 7.3  # deg/s^2 — максимальное угловое ускорение
 MAX_JERK = 18.4  # des/s - максимальная угловая скорость
 # MAX_ACCEL_LONG = 1.0  # m/s^2 — продольное ускорение
+VEL_ABS_MAX_KMH = 150.0
+ACC_NORM_RANGE = (3.0, 40.0)
+GYRO_ABS_MAX = 10.0
 
+# -----//----- Физические ограничения -----//-----
+LAT_RANGE = (-90.0, 90.0)
+LON_RANGE = (-180.0, 180.0)
+ALT_RANGE = (-500.0, 5000.0)
 
-# Other constants
+# -----//----- Выгрузка и обработка данных -----//-----
+NS = 1_000_000_000
+MAD_K = 8.0 # Фильтр от выбросов
+INIT_ANGLE_IMU = (16.6, 0.0, -0.5)
+
+# -----//----- Иные константы -----//-----
 D2R = np.pi / 180
+KMH_TO_MS = 1.0 / 3.6
+
+# -----//----- Смещения -----//-----
+NS_PER_S = NS                    # наносекунд в секунде (= NS)
+IMU_TILT_DEG = INIT_ANGLE_IMU    # углы установки IMU (Ox, Oy, Oz), = INIT_ANGLE_IMU
+FS_GNSS = float(FS_GPS)          # целевая частота сетки GNSS/VEL, Гц (= FS_GPS)
+ 
+# Эталон гравитации для контроля поворота IMU (не экваториальная G0!)
+G_REF = 9.80665                  # м/с², стандартная гравитация
+ 
+# Параметры предобработки
+WARMUP_SEC = 30.0                # сколько секунд срезать от старта (калибровка IMU)
+IMU_CHUNK = 2_000_000            # размер чанка чтения IMU, строк
+ 
+# RTK
+RTK_FIX_STATUS = 2               # значение status, означающее RTK fix
+ 
+# -----//----- Сегментация: категории и палитра -----//-----
+CATEGORIES = ("stop_EngOff", "stop_EngOn", "gruz", "dvij")
+CAT_COLORS = {
+    "stop_EngOff": "#b0bec5",    # серо-голубой — стоянка без двигателя
+    "stop_EngOn":  "#ffcc80",    # янтарь — стоянка с двигателем
+    "gruz":        "#ce93d8",    # фиолетовый — погрузка
+    "dvij":        "#a5d6a7",    # зелёный — движение
+}
+ 
+# Цвета линий графиков разметки
+COL_SPEED = "#4a7ba6"
+COL_AX = "#c97064"               # a_x — терракот
+COL_AY = "#6a9a78"               # a_y — приглушённый зелёный
+COL_AZ = "#5b7fa6"               # a_z — спокойный синий

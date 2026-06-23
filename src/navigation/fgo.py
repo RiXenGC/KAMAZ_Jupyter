@@ -1,16 +1,3 @@
-"""
-LC ИНС/СНС: оптимизация на факторном графе (FGO) через GTSAM.
-
-Batch-сглаживание: строится граф, узлы — навигационные состояния
-(NavState = поза + скорость) и смещения IMU на эпохах GNSS; факторы:
-  - ImuFactor (предынтегрирование IMU между эпохами),
-  - GPSFactor (привязка позиции к СНС),
-  - факторы скорости и эволюции смещений.
-Граф решается методом Левенберга-Марквардта (batch).
-
-Конвенция GTSAM: NED-навигация задаётся через вектор гравитации [0,0,+g].
-"""
-
 import numpy as np
 from src.config.constants import INIT_LAT
 
@@ -54,8 +41,12 @@ class InsGnssFGO:
         init_ba=np.zeros(3),
         init_bg=np.zeros(3),
         lat0_rad=np.deg2rad(INIT_LAT),
+        window_sec=20.0,
+        fs_gps=10.0,
     ):
         self.dt = 1.0 / fs_imu
+        # размер окна оптимизации в узлах GNSS (0/None -> весь граф батчем)
+        self.window_nodes = int(window_sec * fs_gps) if window_sec else None
 
         sl2 = np.sin(lat0_rad) ** 2
         g_mag = 9.7803267715 * (1 + 0.0052790414 * sl2 + 0.0000232718 * sl2**2)
@@ -132,21 +123,86 @@ class InsGnssFGO:
         self.pim.resetIntegrationAndSetBias(self.bias)
 
     def optimize(self):
-        """Решить весь граф (batch LM). Возвращает массивы r, v, euler по узлам."""
+        """Решить граф. Если задано окно (window_nodes) — решаем скользящими
+        кусками по window_nodes узлов, фиксируя стык prior'ом из предыдущего
+        куска (склейка по непрерывности). Иначе — весь граф батчем (LM)."""
         params = LevenbergMarquardtParams()
         params.setMaxIterations(100)
-        opt = LevenbergMarquardtOptimizer(self.graph, self.values, params)
-        result = opt.optimize()
 
         n = self.key + 1
-        R = np.zeros((n, 3))
-        V_ = np.zeros((n, 3))
-        E = np.zeros((n, 3))
+        if not self.window_nodes or self.window_nodes >= n:
+            # батч: весь граф разом
+            opt = LevenbergMarquardtOptimizer(self.graph, self.values, params)
+            result = opt.optimize()
+            return self._extract(result, n)
+
+        # оконная оптимизация: куски по window_nodes с перекрытием в 1 узел
+        W = self.window_nodes
+        R = np.zeros((n, 3)); V_ = np.zeros((n, 3)); E = np.zeros((n, 3))
+
+        # все факторы заранее не делим — строим под-граф для каждого окна,
+        # переиспользуя уже добавленные факторы по диапазону ключей.
+        all_factors = [self.graph.at(i) for i in range(self.graph.size())]
+
+        start = 0
+        carry_pose = None
+        carry_vel = None
+        carry_bias = None
+        while start < n:
+            end = min(start + W, n)  # узлы [start, end)
+            sub = NonlinearFactorGraph()
+            keys_in = set(range(start, end))
+            for f in all_factors:
+                # фактор включаем, если все его навигационные ключи в окне
+                fk = f.keys()
+                idxs = [gtsam.symbolIndex(k) for k in fk]
+                if all((i in keys_in) for i in idxs):
+                    sub.add(f)
+
+            sub_vals = Values()
+            for i in range(start, end):
+                sub_vals.insert(X(i), self.values.atPose3(X(i)))
+                sub_vals.insert(V(i), self.values.atVector(V(i)))
+                sub_vals.insert(B(i), self.values.atConstantBias(B(i)))
+
+            # prior на первый узел окна — из переноса предыдущего решения
+            if carry_pose is not None:
+                pn = gtsam.noiseModel.Diagonal.Sigmas(
+                    np.array([0.01, 0.01, 0.05, 0.3, 0.3, 0.5]))
+                vn = gtsam.noiseModel.Isotropic.Sigma(3, 0.05)
+                sub.add(PriorFactorPose3(X(start), carry_pose, pn))
+                sub.add(PriorFactorVector(V(start), carry_vel, vn))
+                sub.add(PriorFactorConstantBias(
+                    B(start), carry_bias,
+                    gtsam.noiseModel.Isotropic.Sigma(6, 1e-3)))
+
+            opt = LevenbergMarquardtOptimizer(sub, sub_vals, params)
+            res = opt.optimize()
+
+            for i in range(start, end):
+                pose = res.atPose3(X(i))
+                R[i] = pose.translation()
+                V_[i] = res.atVector(V(i))
+                rpy = pose.rotation().rpy()
+                E[i] = np.rad2deg([rpy[2], rpy[1], rpy[0]])
+
+            # перенос последнего узла как prior следующего окна
+            carry_pose = res.atPose3(X(end - 1))
+            carry_vel = res.atVector(V(end - 1))
+            carry_bias = res.atConstantBias(B(end - 1))
+            if end >= n:
+                break
+            start = end - 1  # перекрытие в 1 узел для непрерывности
+
+        return R, V_, E
+
+    def _extract(self, result, n):
+        R = np.zeros((n, 3)); V_ = np.zeros((n, 3)); E = np.zeros((n, 3))
         for i in range(n):
             pose = result.atPose3(X(i))
             R[i] = pose.translation()
             V_[i] = result.atVector(V(i))
-            rpy = pose.rotation().rpy()  # [roll, pitch, yaw], рад
-            E[i] = np.rad2deg([rpy[2], rpy[1], rpy[0]])  # → [yaw, pitch, roll]
+            rpy = pose.rotation().rpy()
+            E[i] = np.rad2deg([rpy[2], rpy[1], rpy[0]])
         self.result = result
         return R, V_, E

@@ -139,9 +139,16 @@ class InsGnssUKF:
         # Перенормировать кватернион в state
         self.ukf.x[6:10] /= np.linalg.norm(self.ukf.x[6:10])
 
-    def update_gnss(self, r_gps_ned, v_gps_ned):
+    def update_gnss(self, r_gps_ned, v_gps_ned, sigma_pos=None):
         z = np.concatenate([r_gps_ned, v_gps_ned])
-        self.ukf.update(z)
+        if sigma_pos is None:
+            self.ukf.update(z)
+        else:
+            R_saved = self.ukf.R.copy()
+            self.ukf.R = R_saved.copy()
+            self.ukf.R[0:3, 0:3] = np.diag(np.asarray(sigma_pos, float) ** 2)
+            self.ukf.update(z)
+            self.ukf.R = R_saved
         self.ukf.x[6:10] /= np.linalg.norm(self.ukf.x[6:10])
 
     # Удобство

@@ -8,18 +8,14 @@ import pandas as pd
 from pathlib import Path
 from dataclasses import dataclass
 
-NS = 1_000_000_000
-G = 9.80665
+# -----//----- Константы -----//-----
+from src.config.constants import (
+    NS, G0, FS_GPS,
+    LAT_RANGE, LON_RANGE, ALT_RANGE,
+    VEL_ABS_MAX_KMH, ACC_NORM_RANGE, GYRO_ABS_MAX, MAD_K
+)
 
-LAT_RANGE = (-90.0, 90.0)
-LON_RANGE = (-180.0, 180.0)
-ALT_RANGE = (-500.0, 5000.0)
-VEL_ABS_MAX_KMH = 150.0
-ACC_NORM_RANGE = (3.0, 40.0)
-GYRO_ABS_MAX = 10.0
-MAD_K = 8.0
-
-
+# -----//----- Вспомогательные -----//-----
 def _sec(ns):
     return ns.astype(np.float64) / NS
 
@@ -65,6 +61,7 @@ class Window:
         return (self.end_ns - self.t0_ns) / NS
 
 
+# -----//----- Поворот по установке IMU -----//-----
 def _rot_x(a):
     c, s = np.cos(a), np.sin(a)
     return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
@@ -144,6 +141,7 @@ def _last_timestamp_csv(path, tcol_index=0, tail_bytes=65536):
     return int(last_line.split(",")[tcol_index])
 
 
+# -----//----- Общее окно -----//-----
 def compute_window(path_g0, path_g1, path_imu, path_vel, warmup_sec, imu_chunk, verbose=True):
     starts, ends = [], []
     for p in (path_g0, path_g1, path_vel):
@@ -168,6 +166,7 @@ def compute_window(path_g0, path_g1, path_imu, path_vel, warmup_sec, imu_chunk, 
     return w
 
 
+# -----//----- GNSS -----//-----
 def process_gnss(path, w, name, fs, verbose=True):
     raw = pd.read_csv(path)
     raw["t"] = _sec(raw["timestamp"].to_numpy()) - w.t0_ns / NS
@@ -192,6 +191,7 @@ def process_gnss(path, w, name, fs, verbose=True):
     return out
 
 
+# -----//----- VEL -----//-----
 def process_vel(path, w, fs, verbose=True):
     raw = pd.read_csv(path, usecols=["timestamp", "linear_velocity_x",
                                      "linear_velocity_y", "linear_velocity_z"])
@@ -229,6 +229,7 @@ def process_vel(path, w, fs, verbose=True):
     return _one(vel0, "0"), _one(vel1, "1")
 
 
+# -----//----- IMU -----//-----
 def process_imu(path, w, imu_chunk, tilt_x_deg=None, tilt_y_deg=None, tilt_z_deg=None, verbose=True):
     cols = ["timestamp", "angular_velocity_x", "angular_velocity_y", "angular_velocity_z",
             "linear_acceleration_x", "linear_acceleration_y", "linear_acceleration_z"]
@@ -273,6 +274,7 @@ def process_imu(path, w, imu_chunk, tilt_x_deg=None, tilt_y_deg=None, tilt_z_deg
     return out
 
 
+# -----//----- Запуск -----//-----
 def run(rec_dir, out_dir, warmup_sec=30.0, fs_gnss=10.0, imu_chunk=2_000_000,
         imu_tilt_deg=(16.5, 0.0, -0.5), save=True, verbose=True):
     """Полный прогон. Возвращает dict с DataFrame (gnss0/gnss1/vel0/vel1/imu/meta/window)."""
@@ -298,8 +300,11 @@ def run(rec_dir, out_dir, warmup_sec=30.0, fs_gnss=10.0, imu_chunk=2_000_000,
         "warmup_sec": warmup_sec, "duration_s": w.duration_s, "fs_gnss": fs_gnss,
         "imu_tilt_x_deg": tilt[0], "imu_tilt_y_deg": tilt[1],
         "imu_tilt_z_deg": tilt[2]}])
+    
+    
     result = {"gnss0": g0, "gnss1": g1, "vel0": v0, "vel1": v1,
               "imu": imu, "meta": meta, "window": w}
+    
     if save:
         out_dir.mkdir(parents=True, exist_ok=True)
         g0.to_parquet(out_dir / "gnss0.parquet", index=False)
@@ -310,4 +315,5 @@ def run(rec_dir, out_dir, warmup_sec=30.0, fs_gnss=10.0, imu_chunk=2_000_000,
         meta.to_parquet(out_dir / "window_meta.parquet", index=False)
         if verbose:
             print(f"\n[OK] сохранено в {out_dir}")
+            
     return result
