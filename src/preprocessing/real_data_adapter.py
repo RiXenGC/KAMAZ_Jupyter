@@ -71,9 +71,9 @@ def prepare_real_segment(
     seg_dir,
     gnss_name: str = "gnss0",
     vel_name: str = "vel0",
-    lowpass_fc: float | None = 5.0,
+    lowpass_fc: float | None = 50.0,
     align_init: bool = True,
-    align_sec: float = 2.0,
+    align_sec: float = 5.0,
 ) -> dict:
     """Собирает словарь сценария S из одного размеченного сегмента (parquet).
 

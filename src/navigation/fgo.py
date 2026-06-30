@@ -41,7 +41,7 @@ class InsGnssFGO:
         init_ba=np.zeros(3),
         init_bg=np.zeros(3),
         lat0_rad=np.deg2rad(INIT_LAT),
-        window_sec=20.0,
+        window_sec=None,
         fs_gps=10.0,
     ):
         self.dt = 1.0 / fs_imu
